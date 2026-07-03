@@ -1,19 +1,25 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ExternalLink, Globe } from "lucide-react";
+import { ChevronLeft, ExternalLink, Globe, Languages } from "lucide-react";
 import { ExplanationShell } from "@/features/explanation/components/ExplanationShell";
+import { TranslationView } from "@/features/translation/components/TranslationView";
+import { BookmarkButton } from "@/features/bookmarks/components/BookmarkButton";
 import { Badge } from "@/components/ui/badge";
 import { loadArticle, addToHistory } from "@/lib/storage";
+import { cn } from "@/lib/utils";
 import type { NewsArticle } from "@/types";
 
 const CAT_LABELS: Record<string, string> = {
   ai: "🤖 AI", web3: "⛓️ Web3", finance: "💰 金融", economy: "📊 経済", tech: "💻 テック",
 };
 
+type Tab = "explanation" | "translation";
+
 export function ArticleDetailClient({ id }: { id: string }) {
   const [article, setArticle] = useState<NewsArticle | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [tab, setTab] = useState<Tab>("explanation");
 
   useEffect(() => {
     loadArticle(id).then((a) => {
@@ -61,6 +67,7 @@ export function ArticleDetailClient({ id }: { id: string }) {
           <ChevronLeft size={16} /> 戻る
         </Link>
         <div className="flex items-center gap-2 ml-auto">
+          <BookmarkButton article={article} />
           {article.category && (
             <Badge variant="secondary">{CAT_LABELS[article.category]}</Badge>
           )}
@@ -87,12 +94,46 @@ export function ArticleDetailClient({ id }: { id: string }) {
         )}
       </div>
 
-      {/* AI Explanation */}
-      <ExplanationShell
-        articleId={id}
-        articleTitle={title}
-        articleContent={content}
-      />
+      {/* Tab navigation (English articles only) */}
+      {article.isEnglish && (
+        <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800 -mb-1">
+          <button
+            onClick={() => setTab("explanation")}
+            className={cn(
+              "flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors",
+              tab === "explanation"
+                ? "border-blue-600 text-blue-600 dark:text-blue-400"
+                : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+            )}
+          >
+            📖 解説
+          </button>
+          <button
+            onClick={() => setTab("translation")}
+            className={cn(
+              "flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors",
+              tab === "translation"
+                ? "border-blue-600 text-blue-600 dark:text-blue-400"
+                : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+            )}
+          >
+            <Languages size={14} />
+            英日対訳
+          </button>
+        </div>
+      )}
+
+      {/* Content */}
+      {tab === "explanation" && (
+        <ExplanationShell
+          articleId={id}
+          articleTitle={title}
+          articleContent={content}
+        />
+      )}
+      {tab === "translation" && article.isEnglish && (
+        <TranslationView article={article} />
+      )}
     </div>
   );
 }

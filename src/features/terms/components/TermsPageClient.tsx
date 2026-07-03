@@ -34,20 +34,30 @@ const CARD_BORDER: Record<string, string> = {
 };
 
 export function TermsPageClient() {
-  const [terms, setTerms] = useState<TermFavorite[]>([]);
+  const [jaTerms, setJaTerms] = useState<TermFavorite[]>([]);
+  const [enTerms, setEnTerms] = useState<TermFavorite[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lang, setLang] = useState<"ja" | "en">("ja");
   const [category, setCategory] = useState<CategoryId>("all");
   const [query, setQuery] = useState("");
   const [active, setActive] = useState<TermFavorite | null>(null);
 
   useEffect(() => {
-    getFavoriteTerms().then((t) => { setTerms(t); setLoading(false); });
+    Promise.all([getFavoriteTerms("ja"), getFavoriteTerms("en")]).then(([ja, en]) => {
+      setJaTerms(ja);
+      setEnTerms(en);
+      setLoading(false);
+    });
   }, []);
+
+  const terms = lang === "ja" ? jaTerms : enTerms;
+  const totalCount = jaTerms.length + enTerms.length;
 
   async function remove(term: string, e: React.MouseEvent) {
     e.stopPropagation();
-    await removeFavoriteTerm(term);
-    setTerms((p) => p.filter((t) => t.term !== term));
+    await removeFavoriteTerm(term, lang);
+    if (lang === "ja") setJaTerms((p) => p.filter((t) => t.term !== term));
+    else setEnTerms((p) => p.filter((t) => t.term !== term));
   }
 
   const filtered = terms.filter((t) => {
@@ -70,8 +80,40 @@ export function TermsPageClient() {
           用語集
         </h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-          お気に入り登録した用語 {terms.length}件
+          お気に入り登録した用語 {totalCount}件
         </p>
+      </div>
+
+      {/* 言語タブ */}
+      <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
+        <button
+          onClick={() => setLang("ja")}
+          className={cn(
+            "flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors",
+            lang === "ja"
+              ? "border-blue-600 text-blue-600 dark:text-blue-400"
+              : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+          )}
+        >
+          🇯🇵 日本語
+          {jaTerms.length > 0 && (
+            <span className="text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-full px-1.5">{jaTerms.length}</span>
+          )}
+        </button>
+        <button
+          onClick={() => setLang("en")}
+          className={cn(
+            "flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors",
+            lang === "en"
+              ? "border-blue-600 text-blue-600 dark:text-blue-400"
+              : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+          )}
+        >
+          🇺🇸 English
+          {enTerms.length > 0 && (
+            <span className="text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-full px-1.5">{enTerms.length}</span>
+          )}
+        </button>
       </div>
 
       {/* 検索 */}
@@ -81,7 +123,7 @@ export function TermsPageClient() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="用語を検索..."
+          placeholder={lang === "en" ? "Search terms..." : "用語を検索..."}
           className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -124,11 +166,15 @@ export function TermsPageClient() {
         <div className="text-center py-16 space-y-3">
           <Star size={36} className="mx-auto text-zinc-300 dark:text-zinc-600" />
           <p className="text-zinc-500 dark:text-zinc-400 font-medium">
-            {terms.length === 0 ? "まだ用語が登録されていません" : "該当する用語がありません"}
+            {terms.length === 0
+              ? (lang === "en" ? "No English terms saved yet" : "まだ用語が登録されていません")
+              : (lang === "en" ? "No matching terms" : "該当する用語がありません")}
           </p>
           {terms.length === 0 && (
             <p className="text-sm text-zinc-400 dark:text-zinc-500">
-              解説ページやAI回答でテキストを選択して「調べる」→「お気に入り」で登録できます
+              {lang === "en"
+                ? 'Select text in the English translation view and tap "Look up" to save terms.'
+                : "解説ページでテキストを選択して「調べる」→「お気に入り」で登録できます"}
             </p>
           )}
         </div>
@@ -146,7 +192,6 @@ export function TermsPageClient() {
                 CARD_BORDER[t.category] ?? "border-zinc-200 dark:border-zinc-700 hover:border-zinc-400"
               )}
             >
-              {/* カテゴリバッジ + 削除ボタン */}
               <div className="flex items-center justify-between mb-2">
                 <span className={cn(
                   "text-xs font-medium rounded-full px-2.5 py-0.5",
@@ -163,19 +208,16 @@ export function TermsPageClient() {
                 </button>
               </div>
 
-              {/* 用語名 */}
               <p className="font-bold text-zinc-900 dark:text-zinc-100 text-base leading-snug">
                 {t.term}
               </p>
 
-              {/* 一言説明 */}
               {t.shortDesc && (
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 line-clamp-2">
                   {t.shortDesc}
                 </p>
               )}
 
-              {/* 関連用語プレビュー */}
               {(t.relatedTerms?.length ?? 0) > 0 && (
                 <div className="flex gap-1 mt-2 flex-wrap">
                   {t.relatedTerms.slice(0, 3).map((r) => (
@@ -199,6 +241,7 @@ export function TermsPageClient() {
         <TermModal
           term={active.term}
           prefetched={active}
+          lang={active.language ?? lang}
           onClose={() => setActive(null)}
         />
       )}

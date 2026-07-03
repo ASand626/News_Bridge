@@ -18,6 +18,7 @@ interface TermData {
 interface Props {
   term: string;
   prefetched?: TermData;
+  lang?: "ja" | "en";
   onClose: () => void;
 }
 
@@ -25,15 +26,14 @@ const CAT_LABELS: Record<string, string> = {
   finance: "💰 金融", web3: "⛓️ Web3", ai: "🤖 AI", economy: "📊 経済", tech: "💻 テック",
 };
 
-async function fetchTerm(term: string): Promise<TermData> {
-  const res = await fetch(`/api/glossary/${encodeURIComponent(term)}`);
+async function fetchTerm(term: string, lang: "ja" | "en"): Promise<TermData> {
+  const res = await fetch(`/api/glossary/${encodeURIComponent(term)}?lang=${lang}`);
   const d = await res.json();
   if (d.error) throw new Error(d.error);
   return d as TermData;
 }
 
-export function TermModal({ term: initialTerm, prefetched, onClose }: Props) {
-  // ナビゲーション履歴
+export function TermModal({ term: initialTerm, prefetched, lang = "ja", onClose }: Props) {
   const [history, setHistory] = useState<TermData[]>([]);
   const [current, setCurrent] = useState<TermData | null>(prefetched ?? null);
   const [loading, setLoading] = useState(!prefetched);
@@ -42,46 +42,41 @@ export function TermModal({ term: initialTerm, prefetched, onClose }: Props) {
   const [favLoading, setFavLoading] = useState(false);
   const favCacheRef = useRef<TermData[]>([]);
 
-  // お気に入りキャッシュをロード（一度だけ）
   useEffect(() => {
-    getFavoriteTerms().then((all) => {
+    getFavoriteTerms(lang).then((all) => {
       favCacheRef.current = all.map((t) => ({
         term: t.term, shortDesc: t.shortDesc, detailDesc: t.detailDesc,
         examples: t.examples, relatedTerms: t.relatedTerms,
         whyImportant: t.whyImportant, category: t.category,
       }));
     });
-  }, []);
+  }, [lang]);
 
-  // 現在の用語が変わるたびにお気に入り状態を確認
   useEffect(() => {
     const term = current?.term ?? initialTerm;
-    getFavoriteTerms().then((all) => setFavorited(all.some((t) => t.term === term)));
-  }, [current, initialTerm]);
+    getFavoriteTerms(lang).then((all) => setFavorited(all.some((t) => t.term === term)));
+  }, [current, initialTerm, lang]);
 
-  // 初回ロード
   useEffect(() => {
     if (prefetched) return;
     setLoading(true);
-    fetchTerm(initialTerm)
+    fetchTerm(initialTerm, lang)
       .then(setCurrent)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [initialTerm, prefetched]);
+  }, [initialTerm, prefetched, lang]);
 
   async function navigateTo(term: string) {
-    // お気に入りキャッシュを先にチェック（APIなし）
     const cached = favCacheRef.current.find((t) => t.term === term);
     if (current) setHistory((h) => [...h, current]);
     if (cached) {
       setCurrent(cached);
       return;
     }
-    // キャッシュにない場合はAPI呼び出し
     setCurrent(null);
     setLoading(true);
     setError(null);
-    fetchTerm(term)
+    fetchTerm(term, lang)
       .then(setCurrent)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -99,7 +94,7 @@ export function TermModal({ term: initialTerm, prefetched, onClose }: Props) {
     if (!current) return;
     setFavLoading(true);
     if (favorited) {
-      await removeFavoriteTerm(current.term);
+      await removeFavoriteTerm(current.term, lang);
       favCacheRef.current = favCacheRef.current.filter((t) => t.term !== current.term);
       setFavorited(false);
     } else {
@@ -111,6 +106,7 @@ export function TermModal({ term: initialTerm, prefetched, onClose }: Props) {
         relatedTerms: current.relatedTerms ?? [],
         whyImportant: current.whyImportant ?? "",
         category: current.category ?? "",
+        language: lang,
       });
       favCacheRef.current = [...favCacheRef.current, current];
       setFavorited(true);
@@ -119,12 +115,12 @@ export function TermModal({ term: initialTerm, prefetched, onClose }: Props) {
   }
 
   const displayTerm = current?.term ?? initialTerm;
+  const langLabel = lang === "en" ? "🇺🇸 EN" : "🇯🇵 JA";
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          {/* 戻るボタン */}
           {history.length > 0 && (
             <button
               onClick={goBack}
@@ -137,11 +133,14 @@ export function TermModal({ term: initialTerm, prefetched, onClose }: Props) {
 
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
-              {current?.category && (
-                <span className="text-xs text-zinc-500 dark:text-zinc-400 mb-1 block">
-                  {CAT_LABELS[current.category] ?? current.category}
-                </span>
-              )}
+              <div className="flex items-center gap-2 mb-1">
+                {current?.category && (
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {CAT_LABELS[current.category] ?? current.category}
+                  </span>
+                )}
+                <span className="text-xs text-zinc-400 dark:text-zinc-500">{langLabel}</span>
+              </div>
               <DialogTitle className="text-xl leading-snug">{displayTerm}</DialogTitle>
               {current?.shortDesc && (
                 <DialogDescription className="mt-1">{current.shortDesc}</DialogDescription>
@@ -175,13 +174,17 @@ export function TermModal({ term: initialTerm, prefetched, onClose }: Props) {
         {current && !loading && (
           <div className="space-y-4 text-sm mt-2">
             <div>
-              <h4 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide mb-1.5">詳しく説明すると</h4>
+              <h4 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide mb-1.5">
+                詳しく説明すると
+              </h4>
               <p className="text-zinc-700 dark:text-zinc-300 leading-relaxed">{current.detailDesc}</p>
             </div>
 
             {(current.examples?.length ?? 0) > 0 && (
               <div>
-                <h4 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide mb-1.5">具体例</h4>
+                <h4 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide mb-1.5">
+                  具体例
+                </h4>
                 <ul className="space-y-1">
                   {current.examples.map((ex, i) => (
                     <li key={i} className="flex gap-2 text-zinc-700 dark:text-zinc-300">
@@ -194,14 +197,18 @@ export function TermModal({ term: initialTerm, prefetched, onClose }: Props) {
 
             {current.whyImportant && (
               <div>
-                <h4 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide mb-1.5">なぜ重要か</h4>
+                <h4 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide mb-1.5">
+                  なぜ重要か
+                </h4>
                 <p className="text-zinc-700 dark:text-zinc-300 leading-relaxed">{current.whyImportant}</p>
               </div>
             )}
 
             {(current.relatedTerms?.length ?? 0) > 0 && (
               <div>
-                <h4 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide mb-1.5">関連用語</h4>
+                <h4 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide mb-1.5">
+                  関連用語
+                </h4>
                 <div className="flex flex-wrap gap-2">
                   {current.relatedTerms.map((t) => {
                     const isCached = favCacheRef.current.some((f) => f.term === t);

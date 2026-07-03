@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
-import type { NewsArticle, FavoriteSite, ArticleHistoryItem, TermFavorite } from "@/types";
+import type { NewsArticle, FavoriteSite, ArticleHistoryItem, TermFavorite, BookmarkedArticle, Translation } from "@/types";
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
 // ログイン中ユーザーのIDを返す。未ログインはnull
@@ -257,14 +257,57 @@ export async function saveChatMessage(articleId: string, msg: ChatMsg, allMessag
   }
 }
 
+// ── Translation cache ─────────────────────────────────────────────────────────
+
+export async function saveTranslation(articleId: string, data: Translation) {
+  try { localStorage.setItem(`nb_trans_${articleId}`, JSON.stringify(data)); } catch {}
+
+  const uid = await getUserId();
+  if (supabase && uid) {
+    supabase.from("translations").upsert({
+      article_id: articleId,
+      title_ja: data.titleJa,
+      content_ja: data.contentJa,
+    }, { onConflict: "article_id" })
+      .then(({ error }) => { if (error) console.error("[supabase] saveTranslation:", error.message); });
+  }
+}
+
+export async function loadTranslation(articleId: string): Promise<Translation | null> {
+  try {
+    const raw = localStorage.getItem(`nb_trans_${articleId}`);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("translations")
+      .select("title_ja, content_ja")
+      .eq("article_id", articleId)
+      .single();
+    if (!error && data) {
+      const t: Translation = { titleJa: data.title_ja, contentJa: data.content_ja };
+      try { localStorage.setItem(`nb_trans_${articleId}`, JSON.stringify(t)); } catch {}
+      return t;
+    }
+  }
+
+  return null;
+}
+
 // ── Term Favorites ────────────────────────────────────────────────────────────
 
-export async function getFavoriteTerms(): Promise<TermFavorite[]> {
+function termLocalKey(lang: "ja" | "en") {
+  return lang === "en" ? "nb_term_favs_en" : "nb_term_favs";
+}
+
+export async function getFavoriteTerms(lang: "ja" | "en" = "ja"): Promise<TermFavorite[]> {
   const uid = await getUserId();
   if (supabase && uid) {
     const { data, error } = await supabase
       .from("term_favorites")
       .select("*")
+      .eq("language", lang)
       .order("created_at", { ascending: false });
     if (!error && data) {
       const terms = data.map((r) => ({
@@ -272,48 +315,124 @@ export async function getFavoriteTerms(): Promise<TermFavorite[]> {
         shortDesc: r.short_desc, detailDesc: r.detail_desc,
         examples: r.examples ?? [], relatedTerms: r.related_terms ?? [],
         whyImportant: r.why_important, category: r.category,
-        createdAt: r.created_at,
+        createdAt: r.created_at, language: (r.language ?? "ja") as "ja" | "en",
       }));
-      try { localStorage.setItem("nb_term_favs", JSON.stringify(terms)); } catch {}
+      try { localStorage.setItem(termLocalKey(lang), JSON.stringify(terms)); } catch {}
       return terms;
     }
   }
   try {
-    const raw = localStorage.getItem("nb_term_favs");
+    const raw = localStorage.getItem(termLocalKey(lang));
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
 
 export async function saveFavoriteTerm(t: Omit<TermFavorite, "id" | "createdAt">) {
-  const entry: TermFavorite = { ...t, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-  const all = await getFavoriteTerms();
+  const lang = t.language ?? "ja";
+  const entry: TermFavorite = { ...t, language: lang, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+  const all = await getFavoriteTerms(lang);
   const updated = [entry, ...all.filter((x) => x.term !== t.term)];
-  try { localStorage.setItem("nb_term_favs", JSON.stringify(updated)); } catch {}
+  try { localStorage.setItem(termLocalKey(lang), JSON.stringify(updated)); } catch {}
   const uid = await getUserId();
   if (supabase && uid) {
     supabase.from("term_favorites").upsert({
       term: t.term, short_desc: t.shortDesc, detail_desc: t.detailDesc,
       examples: t.examples, related_terms: t.relatedTerms,
-      why_important: t.whyImportant, category: t.category, user_id: uid,
-    }, { onConflict: "term,user_id" })
+      why_important: t.whyImportant, category: t.category, user_id: uid, language: lang,
+    }, { onConflict: "term,user_id,language" })
       .then(({ error }) => { if (error) console.error("[supabase] saveFavoriteTerm:", error.message); });
   }
 }
 
-export async function removeFavoriteTerm(term: string) {
-  const all = await getFavoriteTerms();
+export async function removeFavoriteTerm(term: string, lang: "ja" | "en" = "ja") {
+  const all = await getFavoriteTerms(lang);
   const updated = all.filter((x) => x.term !== term);
-  try { localStorage.setItem("nb_term_favs", JSON.stringify(updated)); } catch {}
+  try { localStorage.setItem(termLocalKey(lang), JSON.stringify(updated)); } catch {}
   const uid = await getUserId();
   if (supabase && uid) {
-    supabase.from("term_favorites").delete().eq("term", term)
+    supabase.from("term_favorites").delete().eq("term", term).eq("language", lang)
       .then(({ error }) => { if (error) console.error("[supabase] removeFavoriteTerm:", error.message); });
   }
 }
 
-export async function isFavoriteTerm(term: string): Promise<boolean> {
-  const all = await getFavoriteTerms();
+export async function isFavoriteTerm(term: string, lang: "ja" | "en" = "ja"): Promise<boolean> {
+  const all = await getFavoriteTerms(lang);
   return all.some((x) => x.term === term);
+}
+
+// ── Bookmarks ─────────────────────────────────────────────────────────────────
+
+function getBookmarksLocal(): BookmarkedArticle[] {
+  try {
+    const raw = localStorage.getItem("nb_bookmarks");
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+export async function addBookmark(article: NewsArticle) {
+  const item: BookmarkedArticle = {
+    id: article.id,
+    title: article.titleJa || article.titleEn,
+    url: article.url || undefined,
+    bookmarkedAt: new Date().toISOString(),
+  };
+  const local = getBookmarksLocal().filter((b) => b.id !== article.id);
+  local.unshift(item);
+  try { localStorage.setItem("nb_bookmarks", JSON.stringify(local)); } catch {}
+
+  const uid = await getUserId();
+  if (supabase && uid) {
+    // 記事本体をSupabaseに永続化（元記事が消えても解説を保持するため）
+    saveArticle(article);
+    supabase.from("article_bookmarks").upsert({
+      article_id: article.id,
+      user_id: uid,
+      title: item.title,
+      url: item.url ?? null,
+    }, { onConflict: "article_id,user_id" })
+      .then(({ error }) => { if (error) console.error("[supabase] addBookmark:", error.message); });
+  }
+}
+
+export async function removeBookmark(articleId: string) {
+  try {
+    localStorage.setItem("nb_bookmarks", JSON.stringify(
+      getBookmarksLocal().filter((b) => b.id !== articleId)
+    ));
+  } catch {}
+  const uid = await getUserId();
+  if (supabase && uid) {
+    supabase.from("article_bookmarks").delete()
+      .eq("article_id", articleId).eq("user_id", uid)
+      .then(({ error }) => { if (error) console.error("[supabase] removeBookmark:", error.message); });
+  }
+}
+
+export async function getBookmarks(): Promise<BookmarkedArticle[]> {
+  const uid = await getUserId();
+  if (supabase && uid) {
+    const { data, error } = await supabase
+      .from("article_bookmarks")
+      .select("article_id, title, url, created_at")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (!error && data && data.length > 0) {
+      const items: BookmarkedArticle[] = data.map((r) => ({
+        id: r.article_id as string,
+        title: r.title as string,
+        url: (r.url as string | null) ?? undefined,
+        bookmarkedAt: r.created_at as string,
+      }));
+      try { localStorage.setItem("nb_bookmarks", JSON.stringify(items)); } catch {}
+      return items;
+    }
+  }
+  return getBookmarksLocal();
+}
+
+// isBookmarked はローカルのみ参照（非同期不要・高速）
+export function isBookmarkedLocal(articleId: string): boolean {
+  return getBookmarksLocal().some((b) => b.id === articleId);
 }
 
 // ── ID generation ─────────────────────────────────────────────────────────────

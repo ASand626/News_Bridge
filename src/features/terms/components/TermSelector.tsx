@@ -9,7 +9,13 @@ interface Popup {
   term: string;
 }
 
-export function TermSelector({ children, className }: { children: React.ReactNode; className?: string }) {
+interface Props {
+  children: React.ReactNode;
+  className?: string;
+  lang?: "ja" | "en";
+}
+
+export function TermSelector({ children, className, lang = "ja" }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [popup, setPopup] = useState<Popup | null>(null);
   const [activeTerm, setActiveTerm] = useState<string | null>(null);
@@ -19,13 +25,11 @@ export function TermSelector({ children, className }: { children: React.ReactNod
       const sel = window.getSelection();
       const text = sel?.toString().trim() ?? "";
 
-      // 1〜30文字の選択のみ対象
       if (text.length < 1 || text.length > 30 || !sel?.rangeCount) {
         setPopup(null);
         return;
       }
       const range = sel.getRangeAt(0);
-      // コンテナ内の選択のみ対象
       if (!containerRef.current?.contains(range.commonAncestorContainer)) {
         setPopup(null);
         return;
@@ -52,6 +56,10 @@ export function TermSelector({ children, className }: { children: React.ReactNod
     setActiveTerm(term);
   }
 
+  const buttonLabel = lang === "en"
+    ? `Look up "${popup?.term}"`
+    : `「${popup?.term}」を調べる`;
+
   return (
     <div ref={containerRef} className={className}>
       {children}
@@ -67,13 +75,13 @@ export function TermSelector({ children, className }: { children: React.ReactNod
             className="flex items-center gap-1.5 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-3 py-1.5 text-xs font-medium shadow-lg hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors whitespace-nowrap"
           >
             <BookOpen size={12} />
-            「{popup.term}」を調べる
+            {buttonLabel}
           </button>
         </div>
       )}
 
       {activeTerm && (
-        <TermModal term={activeTerm} onClose={() => setActiveTerm(null)} />
+        <TermModal term={activeTerm} lang={lang} onClose={() => setActiveTerm(null)} />
       )}
     </div>
   );

@@ -3,6 +3,8 @@ import { BookOpen } from "lucide-react";
 import { ArticleInput } from "@/features/articles/components/ArticleInput";
 import { ArticlesList } from "@/features/articles/components/ArticlesList";
 import { FavoriteSites } from "@/features/sites/components/FavoriteSites";
+import { TodayPicks } from "@/features/picks/components/TodayPicks";
+import { BookmarksList } from "@/features/bookmarks/components/BookmarksList";
 
 export default function HomePage() {
   return (
@@ -18,6 +20,7 @@ export default function HomePage() {
 
       <ArticleInput />
       <FavoriteSites />
+      <TodayPicks />
 
       <Link
         href="/terms"
@@ -30,6 +33,7 @@ export default function HomePage() {
         <span className="text-xs text-amber-600 dark:text-amber-400">お気に入り登録した用語 →</span>
       </Link>
 
+      <BookmarksList />
       <ArticlesList />
     </div>
   );

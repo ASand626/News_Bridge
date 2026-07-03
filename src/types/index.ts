@@ -1,4 +1,14 @@
 export type NewsCategory = "ai" | "web3" | "finance" | "economy" | "tech";
+
+export type NewsSubcategory =
+  | "web3_defi" | "web3_infra" | "web3_nft" | "web3_regulation" | "web3_stablecoin"
+  | "finance_stock" | "finance_forex" | "finance_bonds" | "finance_macro" | "finance_commodity";
+
+export interface PickedArticle extends NewsArticle {
+  subcategory: NewsSubcategory;
+  subcategoryLabel: string;
+  subcategoryIcon: string;
+}
 export type Language = "ja" | "en";
 
 export interface TermFavorite {
@@ -11,6 +21,12 @@ export interface TermFavorite {
   whyImportant: string;
   category: string;
   createdAt: string;
+  language?: "ja" | "en";
+}
+
+export interface Translation {
+  titleJa: string;
+  contentJa: string;
 }
 
 export interface FavoriteSite {
@@ -24,6 +40,13 @@ export interface ArticleHistoryItem {
   title: string;
   url?: string;
   savedAt: string;
+}
+
+export interface BookmarkedArticle {
+  id: string;
+  title: string;
+  url?: string;
+  bookmarkedAt: string;
 }
 
 export interface NewsArticle {
