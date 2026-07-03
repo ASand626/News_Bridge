@@ -27,6 +27,7 @@ export interface TermFavorite {
 export interface Translation {
   titleJa: string;
   contentJa: string;
+  contentEn?: string;
 }
 
 export interface FavoriteSite {

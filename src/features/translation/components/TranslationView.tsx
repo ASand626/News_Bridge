@@ -1,74 +1,125 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Languages, Loader2 } from "lucide-react";
+import { Languages, Loader2, ClipboardPaste, RotateCcw } from "lucide-react";
 import { TermSelector } from "@/features/terms/components/TermSelector";
 import { loadTranslation, saveTranslation } from "@/lib/storage";
 import type { NewsArticle } from "@/types";
+
+type Step = "input" | "translating" | "result";
 
 interface Props {
   article: NewsArticle;
 }
 
 export function TranslationView({ article }: Props) {
-  const [titleJa, setTitleJa] = useState<string | null>(null);
-  const [contentJa, setContentJa] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [step, setStep] = useState<Step>("input");
+  const [inputText, setInputText] = useState("");
+  const [titleJa, setTitleJa] = useState("");
+  const [contentJa, setContentJa] = useState("");
+  const [cachedEn, setCachedEn] = useState("");
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      const cached = await loadTranslation(article.id);
-      if (cancelled) return;
+    loadTranslation(article.id).then((cached) => {
       if (cached) {
         setTitleJa(cached.titleJa);
         setContentJa(cached.contentJa);
-        setLoading(false);
-        return;
+        setCachedEn(cached.contentEn ?? "");
+        setStep("result");
       }
-      try {
-        const res = await fetch(`/api/translate/${article.id}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: article.titleEn, content: article.contentEn, url: article.url }),
-        });
-        if (!res.ok) throw new Error();
-        const { titleJa: tJa, contentJa: cJa } = await res.json();
-        if (cancelled) return;
-        setTitleJa(tJa);
-        setContentJa(cJa);
-        saveTranslation(article.id, { titleJa: tJa, contentJa: cJa });
-      } catch {
-        if (!cancelled) setError(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [article.id, article.titleEn, article.contentEn]);
+    });
+  }, [article.id]);
 
-  if (loading) {
+  async function translate() {
+    const text = inputText.trim();
+    if (!text) return;
+    setStep("translating");
+    setError(false);
+    try {
+      const res = await fetch(`/api/translate/${article.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: article.titleEn, content: text }),
+      });
+      if (!res.ok) throw new Error();
+      const { titleJa: tJa, contentJa: cJa } = await res.json();
+      setTitleJa(tJa);
+      setContentJa(cJa);
+      setCachedEn(text);
+      saveTranslation(article.id, { titleJa: tJa, contentJa: cJa, contentEn: text });
+      setStep("result");
+    } catch {
+      setError(true);
+      setStep("input");
+    }
+  }
+
+  function reset() {
+    setInputText("");
+    setStep("input");
+  }
+
+  // ── 入力フォーム ──────────────────────────────────────────────────────────────
+  if (step === "input" || step === "translating") {
     return (
-      <div className="flex items-center gap-2 py-12 text-zinc-400 dark:text-zinc-500">
-        <Loader2 size={16} className="animate-spin" />
-        <span className="text-sm">記事本文を取得して翻訳中... (初回のみ)</span>
+      <div className="space-y-4">
+        <div className="rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/10 p-4 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <ClipboardPaste size={14} className="text-blue-500 shrink-0" />
+            <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+              元記事の英語本文を貼り付けてください
+            </p>
+          </div>
+          <p className="text-xs text-blue-600/70 dark:text-blue-400/70 pl-5">
+            元記事を開いて全文をコピー → 下のテキストエリアに貼り付け → 翻訳ボタンをタップ
+          </p>
+        </div>
+
+        <textarea
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          placeholder="ここに英語の記事本文を貼り付けてください..."
+          rows={10}
+          className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none leading-relaxed"
+        />
+
+        {error && (
+          <p className="text-sm text-red-500 dark:text-red-400">翻訳に失敗しました。もう一度試してください。</p>
+        )}
+
+        <button
+          onClick={translate}
+          disabled={!inputText.trim() || step === "translating"}
+          className="flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2.5 text-sm font-medium transition-colors"
+        >
+          {step === "translating" ? (
+            <><Loader2 size={14} className="animate-spin" /> 翻訳中...</>
+          ) : (
+            <><Languages size={14} /> 翻訳する</>
+          )}
+        </button>
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <p className="text-sm text-red-500 dark:text-red-400 py-4">翻訳に失敗しました。しばらく経ってから再試行してください。</p>
-    );
-  }
+  // ── 対訳表示 ──────────────────────────────────────────────────────────────────
+  const enContent = cachedEn || article.contentEn || "(本文なし)";
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-zinc-400 dark:text-zinc-500 flex items-center gap-1.5">
-        <Languages size={12} />
-        テキストを選択して用語を調べられます
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-zinc-400 dark:text-zinc-500 flex items-center gap-1.5">
+          <Languages size={12} />
+          テキストを選択して用語を調べられます
+        </p>
+        <button
+          onClick={reset}
+          className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        >
+          <RotateCcw size={11} />
+          貼り直す
+        </button>
+      </div>
 
       <div className="grid md:grid-cols-2 gap-4">
         {/* English original */}
@@ -79,7 +130,7 @@ export function TranslationView({ article }: Props) {
           </h2>
           <TermSelector lang="en">
             <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">
-              {article.contentEn || "(本文なし)"}
+              {enContent}
             </p>
           </TermSelector>
         </div>
