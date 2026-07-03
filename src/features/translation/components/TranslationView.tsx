@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Languages, Loader2, ClipboardPaste, RotateCcw } from "lucide-react";
+import { Languages, Loader2, ClipboardPaste, Link2, RotateCcw, AlertCircle } from "lucide-react";
 import { TermSelector } from "@/features/terms/components/TermSelector";
 import { loadTranslation, saveTranslation } from "@/lib/storage";
+import { cn } from "@/lib/utils";
 import type { NewsArticle } from "@/types";
 
-type Step = "input" | "translating" | "result";
+type InputMode = "url" | "text";
+type Step = "input" | "fetching" | "translating" | "result";
 
 interface Props {
   article: NewsArticle;
@@ -13,11 +15,13 @@ interface Props {
 
 export function TranslationView({ article }: Props) {
   const [step, setStep] = useState<Step>("input");
-  const [inputText, setInputText] = useState("");
+  const [mode, setMode] = useState<InputMode>("url");
+  const [urlInput, setUrlInput] = useState(article.url ?? "");
+  const [textInput, setTextInput] = useState("");
   const [titleJa, setTitleJa] = useState("");
   const [contentJa, setContentJa] = useState("");
   const [cachedEn, setCachedEn] = useState("");
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadTranslation(article.id).then((cached) => {
@@ -30,70 +34,133 @@ export function TranslationView({ article }: Props) {
     });
   }, [article.id]);
 
-  async function translate() {
-    const text = inputText.trim();
-    if (!text) return;
-    setStep("translating");
-    setError(false);
+  async function submit() {
+    setError(null);
+
+    const isUrl = mode === "url";
+    const payload = isUrl
+      ? { title: article.titleEn, url: urlInput.trim() }
+      : { title: article.titleEn, content: textInput.trim() };
+
+    if (isUrl && !urlInput.trim()) return;
+    if (!isUrl && !textInput.trim()) return;
+
+    setStep(isUrl ? "fetching" : "translating");
+
     try {
       const res = await fetch(`/api/translate/${article.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: article.titleEn, content: text }),
+        body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error();
-      const { titleJa: tJa, contentJa: cJa } = await res.json();
-      setTitleJa(tJa);
-      setContentJa(cJa);
-      setCachedEn(text);
-      saveTranslation(article.id, { titleJa: tJa, contentJa: cJa, contentEn: text });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? "翻訳に失敗しました");
+        // URLモードで取得失敗 → テキストモードに切り替えを促す
+        if (res.status === 422) setMode("text");
+        setStep("input");
+        return;
+      }
+
+      const fetchedEn = data.fetchedContent ?? textInput;
+      setTitleJa(data.titleJa);
+      setContentJa(data.contentJa);
+      setCachedEn(fetchedEn);
+      saveTranslation(article.id, { titleJa: data.titleJa, contentJa: data.contentJa, contentEn: fetchedEn });
       setStep("result");
     } catch {
-      setError(true);
+      setError("翻訳に失敗しました。もう一度試してください。");
       setStep("input");
     }
   }
 
   function reset() {
-    setInputText("");
+    setTextInput("");
+    setError(null);
     setStep("input");
   }
 
+  const isWorking = step === "fetching" || step === "translating";
+  const loadingLabel = step === "fetching" ? "記事を取得中..." : "翻訳中...";
+
   // ── 入力フォーム ──────────────────────────────────────────────────────────────
-  if (step === "input" || step === "translating") {
+  if (step !== "result") {
     return (
       <div className="space-y-4">
-        <div className="rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/10 p-4 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <ClipboardPaste size={14} className="text-blue-500 shrink-0" />
-            <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
-              元記事の英語本文を貼り付けてください
-            </p>
-          </div>
-          <p className="text-xs text-blue-600/70 dark:text-blue-400/70 pl-5">
-            元記事を開いて全文をコピー → 下のテキストエリアに貼り付け → 翻訳ボタンをタップ
-          </p>
+        {/* モード切り替えタブ */}
+        <div className="flex gap-1 rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1 w-fit">
+          <button
+            onClick={() => setMode("url")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+              mode === "url"
+                ? "bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 shadow-sm"
+                : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+            )}
+          >
+            <Link2 size={12} /> URLで取得
+          </button>
+          <button
+            onClick={() => setMode("text")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+              mode === "text"
+                ? "bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 shadow-sm"
+                : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+            )}
+          >
+            <ClipboardPaste size={12} /> テキストを貼り付け
+          </button>
         </div>
 
-        <textarea
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          placeholder="ここに英語の記事本文を貼り付けてください..."
-          rows={10}
-          className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none leading-relaxed"
-        />
+        {/* URLモード */}
+        {mode === "url" && (
+          <div className="space-y-3">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              記事のURLを貼り付けると本文を自動取得して翻訳します。ペイウォール記事は取得できません。
+            </p>
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="https://..."
+              className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-2.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        )}
 
+        {/* テキストモード */}
+        {mode === "text" && (
+          <div className="space-y-3">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              元記事を開いて全文をコピーし、以下に貼り付けてください。
+            </p>
+            <textarea
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="ここに英語の記事本文を貼り付けてください..."
+              rows={10}
+              className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none leading-relaxed"
+            />
+          </div>
+        )}
+
+        {/* エラー */}
         {error && (
-          <p className="text-sm text-red-500 dark:text-red-400">翻訳に失敗しました。もう一度試してください。</p>
+          <div className="flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/20 px-3 py-2.5 text-xs text-red-700 dark:text-red-400">
+            <AlertCircle size={13} className="shrink-0 mt-0.5" />
+            <span>{error}{mode === "text" ? "" : " テキストを直接貼り付けてください。"}</span>
+          </div>
         )}
 
         <button
-          onClick={translate}
-          disabled={!inputText.trim() || step === "translating"}
+          onClick={submit}
+          disabled={isWorking || (mode === "url" ? !urlInput.trim() : !textInput.trim())}
           className="flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 py-2.5 text-sm font-medium transition-colors"
         >
-          {step === "translating" ? (
-            <><Loader2 size={14} className="animate-spin" /> 翻訳中...</>
+          {isWorking ? (
+            <><Loader2 size={14} className="animate-spin" /> {loadingLabel}</>
           ) : (
             <><Languages size={14} /> 翻訳する</>
           )}
@@ -117,7 +184,7 @@ export function TranslationView({ article }: Props) {
           className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
         >
           <RotateCcw size={11} />
-          貼り直す
+          再取得
         </button>
       </div>
 
