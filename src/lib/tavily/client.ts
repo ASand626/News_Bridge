@@ -12,3 +12,14 @@ export async function searchRelated(query: string): Promise<string> {
     return "";
   }
 }
+
+export async function extractArticleContent(url: string): Promise<string> {
+  try {
+    const res = await client.extract([url]);
+    const raw = res.results[0]?.rawContent ?? "";
+    // 長すぎる場合は8000文字に制限
+    return raw.slice(0, 8000);
+  } catch {
+    return "";
+  }
+}

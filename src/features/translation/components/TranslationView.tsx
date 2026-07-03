@@ -30,7 +30,7 @@ export function TranslationView({ article }: Props) {
         const res = await fetch(`/api/translate/${article.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: article.titleEn, content: article.contentEn }),
+          body: JSON.stringify({ title: article.titleEn, content: article.contentEn, url: article.url }),
         });
         if (!res.ok) throw new Error();
         const { titleJa: tJa, contentJa: cJa } = await res.json();
@@ -52,7 +52,7 @@ export function TranslationView({ article }: Props) {
     return (
       <div className="flex items-center gap-2 py-12 text-zinc-400 dark:text-zinc-500">
         <Loader2 size={16} className="animate-spin" />
-        <span className="text-sm">翻訳中... (初回のみClaude APIを使用)</span>
+        <span className="text-sm">記事本文を取得して翻訳中... (初回のみ)</span>
       </div>
     );
   }
