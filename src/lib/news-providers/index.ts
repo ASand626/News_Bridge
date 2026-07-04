@@ -180,7 +180,7 @@ export async function getWeb3Picks(): Promise<PickedArticle[]> {
 
 export async function getFinancePicks(): Promise<PickedArticle[]> {
   const results = await Promise.allSettled(
-    FINANCE_SUBCATS.map((cat) => fetchNewsData(cat.query, "ja,en"))
+    FINANCE_SUBCATS.map((cat) => NewsApi.fetchJaQuery(cat.query))
   );
 
   const picks: PickedArticle[] = [];
@@ -191,14 +191,25 @@ export async function getFinancePicks(): Promise<PickedArticle[]> {
     const result = results[i];
     if (result.status !== "fulfilled") continue;
 
-    const available = result.value.filter((a) => !usedUrls.has(a.link));
-    // 日本語記事を優先、なければ英語記事を使用
-    const article =
-      available.find((a) => a.language === "ja") ?? available[0];
+    const article = result.value.find((a) => !usedUrls.has(a.url));
     if (!article) continue;
 
-    usedUrls.add(article.link);
-    picks.push(toPickedArticle(article, cat, "_nd", "finance"));
+    usedUrls.add(article.url);
+    const id = hashId(article.url + "_na_fin");
+    picks.push({
+      id, externalId: id,
+      source: "newsapi", category: "finance",
+      titleJa: article.title, titleEn: article.title,
+      contentJa: article.content ?? article.description ?? "",
+      contentEn: article.content ?? article.description ?? "",
+      description: article.description ?? "",
+      url: article.url, imageUrl: article.urlToImage,
+      isEnglish: false,
+      publishedAt: article.publishedAt,
+      subcategory: cat.id,
+      subcategoryLabel: cat.label,
+      subcategoryIcon: cat.icon,
+    });
   }
 
   return picks;
