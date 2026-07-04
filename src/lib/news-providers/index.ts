@@ -122,11 +122,11 @@ const WEB3_SUBCATS: {
 ];
 
 const FINANCE_SUBCATS: { id: NewsSubcategory; label: string; icon: string; query: string }[] = [
-  { id: "finance_stock",     label: "株式市場",     icon: "📈", query: "stock market earnings S&P Nasdaq" },
-  { id: "finance_forex",     label: "為替・FX",     icon: "💱", query: "dollar yen euro forex exchange rate" },
-  { id: "finance_bonds",     label: "債券・金利",   icon: "🏛️", query: "Federal Reserve interest rate treasury bond yield" },
-  { id: "finance_macro",     label: "マクロ経済",   icon: "🌐", query: "GDP inflation CPI economic growth" },
-  { id: "finance_commodity", label: "コモディティ", icon: "🛢️", query: "crude oil gold commodity price" },
+  { id: "finance_stock",     label: "株式市場",     icon: "📈", query: "日経平均 東証 株式市場 株価" },
+  { id: "finance_forex",     label: "為替・FX",     icon: "💱", query: "円相場 ドル円 為替 円高 円安" },
+  { id: "finance_bonds",     label: "債券・金利",   icon: "🏛️", query: "日本銀行 国債 金利 利上げ 金融政策" },
+  { id: "finance_macro",     label: "マクロ経済",   icon: "🌐", query: "日本経済 物価 GDP インフレ 景気" },
+  { id: "finance_commodity", label: "コモディティ", icon: "🛢️", query: "原油 金価格 資源 商品市場" },
 ];
 
 function toPickedArticle(
@@ -180,7 +180,7 @@ export async function getWeb3Picks(): Promise<PickedArticle[]> {
 
 export async function getFinancePicks(): Promise<PickedArticle[]> {
   const results = await Promise.allSettled(
-    FINANCE_SUBCATS.map((cat) => fetchNewsData(cat.query))
+    FINANCE_SUBCATS.map((cat) => fetchNewsData(cat.query, "ja,en"))
   );
 
   const picks: PickedArticle[] = [];
@@ -191,7 +191,10 @@ export async function getFinancePicks(): Promise<PickedArticle[]> {
     const result = results[i];
     if (result.status !== "fulfilled") continue;
 
-    const article = result.value.find((a) => !usedUrls.has(a.link));
+    const available = result.value.filter((a) => !usedUrls.has(a.link));
+    // 日本語記事を優先、なければ英語記事を使用
+    const article =
+      available.find((a) => a.language === "ja") ?? available[0];
     if (!article) continue;
 
     usedUrls.add(article.link);
