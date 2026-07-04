@@ -122,11 +122,11 @@ const WEB3_SUBCATS: {
 ];
 
 const FINANCE_SUBCATS: { id: NewsSubcategory; label: string; icon: string; query: string }[] = [
-  { id: "finance_stock",     label: "株式市場",     icon: "📈", query: "日経平均 東証 株式市場 株価" },
-  { id: "finance_forex",     label: "為替・FX",     icon: "💱", query: "円相場 ドル円 為替 円高 円安" },
-  { id: "finance_bonds",     label: "債券・金利",   icon: "🏛️", query: "日本銀行 国債 金利 利上げ 金融政策" },
-  { id: "finance_macro",     label: "マクロ経済",   icon: "🌐", query: "日本経済 物価 GDP インフレ 景気" },
-  { id: "finance_commodity", label: "コモディティ", icon: "🛢️", query: "原油 金価格 資源 商品市場" },
+  { id: "finance_stock",     label: "株式市場",     icon: "📈", query: "Nikkei Japan stock market Tokyo" },
+  { id: "finance_forex",     label: "為替・FX",     icon: "💱", query: "yen dollar JPY USD forex exchange" },
+  { id: "finance_bonds",     label: "債券・金利",   icon: "🏛️", query: "BOJ Bank of Japan interest rate bond" },
+  { id: "finance_macro",     label: "マクロ経済",   icon: "🌐", query: "Japan economy GDP inflation growth" },
+  { id: "finance_commodity", label: "コモディティ", icon: "🛢️", query: "oil gold commodity price market" },
 ];
 
 function toPickedArticle(
