@@ -46,5 +46,3 @@ export const fetchJa = (cat: NewsCategory) =>
 export const fetchEn = (cat: NewsCategory) =>
   fetchArticles({ q: EN_QUERIES[cat], language: "en", sortBy: "publishedAt" });
 
-export const fetchJaQuery = (query: string) =>
-  fetchArticles({ q: query, language: "ja", sortBy: "publishedAt" });
