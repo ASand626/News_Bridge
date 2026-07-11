@@ -3,6 +3,7 @@ import * as NewsApi from "./newsapi";
 import * as GNews from "./gnews";
 import { fetchCryptoNews, fetchNewsData } from "./newsdata";
 import { fetchAtarashiiKeizai, type AkArticle } from "./atarashii-keizai";
+import { fetchFinanceRss, type FinanceRssArticle } from "./finance-rss";
 import { createHash } from "crypto";
 
 function hashId(str: string) {
@@ -245,26 +246,85 @@ export async function getWeb3Picks(): Promise<PickedArticle[]> {
   return getWeb3PicksFromNewsData();
 }
 
-export async function getFinancePicks(): Promise<PickedArticle[]> {
-  const results = await Promise.allSettled(
-    FINANCE_SUBCATS.map((cat) => fetchNewsData(cat.query, "ja,en"))
-  );
+const FINANCE_SUBCAT_KEYWORDS: Record<NewsSubcategory, string[]> = {
+  finance_stock:     ["株", "日経平均", "株式", "東証", "証券", "上場", "株価", "日経", "ダウ", "ナスダック", "s&p", "nikkei", "stock", "shares"],
+  finance_forex:     ["円", "ドル", "為替", "外国為替", "fx", "円相場", "ユーロ", "ポンド", "人民元", "yen", "dollar", "euro", "forex"],
+  finance_bonds:     ["金利", "国債", "債券", "利率", "日銀", "日本銀行", "利上げ", "利下げ", "金融政策", "fed", "フェデラル", "中央銀行", "bond", "yield", "rate"],
+  finance_macro:     ["gdp", "インフレ", "物価", "消費", "景気", "経済成長", "cpi", "失業", "雇用", "貿易", "輸出", "輸入", "inflation", "economy"],
+  finance_commodity: ["原油", "金", "銀", "資源", "石油", "商品", "コモディティ", "oil", "gold", "commodity", "wheat", "小麦"],
+  // web3 subcats (not used here)
+  web3_defi: [], web3_infra: [], web3_nft: [], web3_regulation: [], web3_stablecoin: [],
+};
+
+function detectFinanceSubcat(article: FinanceRssArticle): NewsSubcategory {
+  const text = (article.title + " " + article.description).toLowerCase();
+  for (const cat of FINANCE_SUBCATS) {
+    const kws = FINANCE_SUBCAT_KEYWORDS[cat.id as NewsSubcategory];
+    if (kws.some((kw) => text.includes(kw))) return cat.id as NewsSubcategory;
+  }
+  return "finance_macro";
+}
+
+function financeRssToPickedArticle(
+  article: FinanceRssArticle,
+  cat: { id: NewsSubcategory; label: string; icon: string }
+): PickedArticle {
+  const id = hashId(article.link + "_fr");
+  const pubDate = article.pubDate ? (() => { try { return new Date(article.pubDate).toISOString(); } catch { return new Date().toISOString(); } })() : new Date().toISOString();
+  return {
+    id, externalId: id,
+    source: "manual", category: "finance",
+    titleJa: article.title, titleEn: article.title,
+    contentJa: article.description, contentEn: article.description,
+    description: article.description,
+    url: article.link, imageUrl: null,
+    isEnglish: false,
+    publishedAt: pubDate,
+    subcategory: cat.id,
+    subcategoryLabel: cat.label,
+    subcategoryIcon: cat.icon,
+  };
+}
+
+async function getFinancePicksFromRss(): Promise<PickedArticle[]> {
+  const articles = await fetchFinanceRss();
+  if (articles.length === 0) return [];
 
   const picks: PickedArticle[] = [];
   const usedUrls = new Set<string>();
 
+  for (const cat of FINANCE_SUBCATS) {
+    const article =
+      articles.find((a) => !usedUrls.has(a.link) && detectFinanceSubcat(a) === cat.id) ??
+      articles.find((a) => !usedUrls.has(a.link));
+    if (!article) continue;
+    usedUrls.add(article.link);
+    picks.push(financeRssToPickedArticle(article, cat));
+  }
+
+  return picks;
+}
+
+export async function getFinancePicks(): Promise<PickedArticle[]> {
+  // NHK経済・Reuters JPを優先、失敗時はNewsData.ioへフォールバック
+  const rssPicks = await getFinancePicksFromRss();
+  if (rssPicks.length > 0) return rssPicks;
+
+  // フォールバック: NewsData.io
+  const results = await Promise.allSettled(
+    FINANCE_SUBCATS.map((cat) => fetchNewsData(cat.query, "ja,en"))
+  );
+  const picks: PickedArticle[] = [];
+  const usedUrls = new Set<string>();
   for (let i = 0; i < FINANCE_SUBCATS.length; i++) {
     const cat = FINANCE_SUBCATS[i];
     const result = results[i];
     if (result.status !== "fulfilled") continue;
-
     const available = result.value.filter((a) => !usedUrls.has(a.link));
     const article = available.find((a) => a.language === "ja") ?? available[0];
     if (!article) continue;
-
     usedUrls.add(article.link);
     picks.push(toPickedArticle(article, cat, "_nd", "finance"));
   }
-
   return picks;
 }
