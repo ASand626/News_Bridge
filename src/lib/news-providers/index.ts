@@ -2,6 +2,7 @@ import type { NewsArticle, NewsCategory, NewsSubcategory, PickedArticle } from "
 import * as NewsApi from "./newsapi";
 import * as GNews from "./gnews";
 import { fetchCryptoNews, fetchNewsData } from "./newsdata";
+import { fetchAtarashiiKeizai, type AkArticle } from "./atarashii-keizai";
 import { createHash } from "crypto";
 
 function hashId(str: string) {
@@ -154,28 +155,94 @@ function toPickedArticle(
   };
 }
 
-export async function getWeb3Picks(): Promise<PickedArticle[]> {
-  const results = await Promise.allSettled(
-    WEB3_SUBCATS.map((cat) => fetchCryptoNews({ query: cat.query, coins: cat.coins }))
-  );
+// キーワードで記事をWeb3サブカテゴリに分類する
+const AK_SUBCAT_KEYWORDS: Record<NewsSubcategory, string[]> = {
+  web3_defi:       ["defi", "分散型金融", "dex", "流動性", "uniswap", "aave", "compound", "yield", "レンディング", "lending", "amm", "pool"],
+  web3_nft:        ["nft", "メタバース", "デジタルアート", "コレクション", "opensea", "mint", "ミント"],
+  web3_regulation: ["規制", "法律", "金融庁", "ライセンス", "法案", "sec", "fsa", "法整備", "承認", "禁止", "違法", "制度"],
+  web3_stablecoin: ["ステーブルコイン", "stablecoin", "usdt", "usdc", "dai", "cbdc", "デジタル通貨", "ドル建て"],
+  web3_infra:      ["ビットコイン", "bitcoin", "btc", "イーサリアム", "ethereum", "eth", "solana", "sol", "レイヤー", "layer", "アップグレード", "ハードフォーク", "ノード", "チェーン"],
+  // finance subcats (not used here)
+  finance_stock:     [],
+  finance_forex:     [],
+  finance_bonds:     [],
+  finance_macro:     [],
+  finance_commodity: [],
+};
+
+function detectWeb3Subcat(article: AkArticle): NewsSubcategory {
+  const text = (article.title + " " + article.description).toLowerCase();
+  for (const cat of WEB3_SUBCATS) {
+    const kws = AK_SUBCAT_KEYWORDS[cat.id as NewsSubcategory];
+    if (kws.some((kw) => text.includes(kw))) return cat.id as NewsSubcategory;
+  }
+  return "web3_infra";
+}
+
+function akToPickedArticle(
+  article: AkArticle,
+  cat: { id: NewsSubcategory; label: string; icon: string }
+): PickedArticle {
+  const id = hashId(article.link + "_ak");
+  const pubDate = article.pubDate ? (() => { try { return new Date(article.pubDate).toISOString(); } catch { return new Date().toISOString(); } })() : new Date().toISOString();
+  return {
+    id, externalId: id,
+    source: "manual", category: "web3",
+    titleJa: article.title, titleEn: article.title,
+    contentJa: article.description, contentEn: article.description,
+    description: article.description,
+    url: article.link, imageUrl: null,
+    isEnglish: false,
+    publishedAt: pubDate,
+    subcategory: cat.id,
+    subcategoryLabel: cat.label,
+    subcategoryIcon: cat.icon,
+  };
+}
+
+async function getWeb3PicksFromRss(): Promise<PickedArticle[]> {
+  const articles = await fetchAtarashiiKeizai();
+  if (articles.length === 0) return [];
 
   const picks: PickedArticle[] = [];
   const usedUrls = new Set<string>();
 
+  for (const cat of WEB3_SUBCATS) {
+    // キーワードマッチ優先、次に未使用の先頭記事
+    const article =
+      articles.find((a) => !usedUrls.has(a.link) && detectWeb3Subcat(a) === cat.id) ??
+      articles.find((a) => !usedUrls.has(a.link));
+    if (!article) continue;
+    usedUrls.add(article.link);
+    picks.push(akToPickedArticle(article, cat));
+  }
+
+  return picks;
+}
+
+async function getWeb3PicksFromNewsData(): Promise<PickedArticle[]> {
+  const results = await Promise.allSettled(
+    WEB3_SUBCATS.map((cat) => fetchCryptoNews({ query: cat.query, coins: cat.coins }))
+  );
+  const picks: PickedArticle[] = [];
+  const usedUrls = new Set<string>();
   for (let i = 0; i < WEB3_SUBCATS.length; i++) {
     const cat = WEB3_SUBCATS[i];
     const result = results[i];
     if (result.status !== "fulfilled") continue;
-
-    // 重複URLをスキップして最初の新規記事を採用
     const article = result.value.find((a) => !usedUrls.has(a.link));
     if (!article) continue;
-
     usedUrls.add(article.link);
     picks.push(toPickedArticle(article, cat, "_ndc", "web3"));
   }
-
   return picks;
+}
+
+export async function getWeb3Picks(): Promise<PickedArticle[]> {
+  // あたらしい経済 RSSを優先、取得失敗時はNewsData.ioへフォールバック
+  const rssPicks = await getWeb3PicksFromRss();
+  if (rssPicks.length > 0) return rssPicks;
+  return getWeb3PicksFromNewsData();
 }
 
 export async function getFinancePicks(): Promise<PickedArticle[]> {
