@@ -10,11 +10,18 @@ export async function POST(req: NextRequest) {
   const lastMsg = messages[messages.length - 1]?.content ?? "";
   const web = await searchRelated(lastMsg);
 
+  const today = new Date().toLocaleDateString("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric", month: "long", day: "numeric", weekday: "long",
+  });
+
   const system = [
     CHAT_SYSTEM_PROMPT,
+    `\n\n【現在の日付】${today}`,
+    `\n【重要】あなたの学習データには情報の締め切り日があります。現職の人物・最新の出来事・今年の数字など時事的な情報は、以下の「最新Web情報」を最優先で参照し、不確かな場合は「最新情報は変わっている可能性があります」と添えてください。`,
     articleTitle ? `\n\n【読んでいる記事】\nタイトル: ${articleTitle}\n本文: ${articleContent ?? ""}` : "",
     explanationContext ? `\n\n【この記事のAI解説（①〜④）】\n${explanationContext}` : "",
-    web ? `\n\n【最新Web情報】\n${web}` : "",
+    web ? `\n\n【最新Web情報（こちらを優先）】\n${web}` : "",
   ].join("");
 
   const stream = anthropic.messages.stream({
