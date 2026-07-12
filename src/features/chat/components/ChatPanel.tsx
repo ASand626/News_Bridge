@@ -22,6 +22,10 @@ const SUGGESTIONS = [
   "インフレとは何ですか？",
 ];
 
+// タイプライター速度: 2文字 / 30ms ≒ 67文字/秒
+const CHARS_PER_TICK = 2;
+const TICK_MS = 30;
+
 export function ChatPanel({ articleId, articleTitle, articleContent, explanationContext }: Props) {
   const chatKey = articleId ?? "global";
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -31,7 +35,15 @@ export function ChatPanel({ articleId, articleTitle, articleContent, explanation
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // チャット履歴のロード
+  // タイプライター用 ref（state にしない＝再レンダー不要な内部管理）
+  const streamBuffer = useRef("");   // ストリームの全受信テキスト
+  const typeIdx = useRef(0);         // タイプライターが表示した文字数
+  const streamDone = useRef(false);  // ストリーム受信完了フラグ
+  const streamMsgId = useRef("");    // タイプ中のメッセージ ID
+  const typeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 保存コールバックをクロージャで保持
+  const onTypewriterDone = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     loadChatMessages(chatKey).then((msgs) => {
       setMessages(msgs);
@@ -43,6 +55,42 @@ export function ChatPanel({ articleId, articleTitle, articleContent, explanation
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // アンマウント時にタイマー解放
+  useEffect(() => {
+    return () => {
+      if (typeTimer.current) clearInterval(typeTimer.current);
+    };
+  }, []);
+
+  function startTypewriter(msgId: string, onDone: () => void) {
+    if (typeTimer.current) clearInterval(typeTimer.current);
+    onTypewriterDone.current = onDone;
+
+    typeTimer.current = setInterval(() => {
+      const full = streamBuffer.current;
+      const idx = typeIdx.current;
+
+      if (idx < full.length) {
+        // バッファから少しずつ表示
+        const next = Math.min(idx + CHARS_PER_TICK, full.length);
+        typeIdx.current = next;
+        setMessages((p) =>
+          p.map((m) => m.id === msgId ? { ...m, content: full.slice(0, next) } : m)
+        );
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      } else if (streamDone.current) {
+        // 受信完了 & 表示追いついた → タイマー終了
+        clearInterval(typeTimer.current!);
+        typeTimer.current = null;
+        // 全文確定表示
+        setMessages((p) =>
+          p.map((m) => m.id === msgId ? { ...m, content: full } : m)
+        );
+        onTypewriterDone.current?.();
+      }
+    }, TICK_MS);
+  }
+
   async function send(text: string) {
     if (!text.trim() || loading) return;
     const prevMessages = messages;
@@ -53,8 +101,13 @@ export function ChatPanel({ articleId, articleTitle, articleContent, explanation
     setInput("");
     setLoading(true);
 
-    // ユーザーメッセージを即時保存
     saveChatMessage(chatKey, userMsg, [...prevMessages, userMsg]);
+
+    // タイプライター初期化
+    streamBuffer.current = "";
+    typeIdx.current = 0;
+    streamDone.current = false;
+    streamMsgId.current = asstMsg.id;
 
     try {
       const res = await fetch("/api/chat", {
@@ -67,6 +120,14 @@ export function ChatPanel({ articleId, articleTitle, articleContent, explanation
       });
       if (!res.ok || !res.body) throw new Error("チャットに失敗しました");
 
+      // タイプライター開始（ストリーム受信と並行）
+      startTypewriter(asstMsg.id, () => {
+        const finalAsst = { ...asstMsg, content: streamBuffer.current };
+        saveChatMessage(chatKey, finalAsst, [...prevMessages, userMsg, finalAsst]);
+        setLoading(false);
+      });
+
+      // ストリーム受信：バッファに蓄積するだけ（表示はタイプライターに任せる）
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let acc = "";
@@ -74,16 +135,15 @@ export function ChatPanel({ articleId, articleTitle, articleContent, explanation
         const { done, value } = await reader.read();
         if (done) break;
         acc += dec.decode(value, { stream: true });
-        setMessages((p) => p.map((m) => m.id === asstMsg.id ? { ...m, content: acc } : m));
+        streamBuffer.current = acc;
       }
+      streamDone.current = true;
+      // setLoading(false) はタイプライター完了時に呼ばれる
 
-      // アシスタントの応答を保存
-      const finalAsst = { ...asstMsg, content: acc };
-      saveChatMessage(chatKey, finalAsst, [...prevMessages, userMsg, finalAsst]);
     } catch (e) {
+      if (typeTimer.current) { clearInterval(typeTimer.current); typeTimer.current = null; }
       const errMsg = e instanceof Error ? e.message : "エラーが発生しました";
       setMessages((p) => p.map((m) => m.id === asstMsg.id ? { ...m, content: errMsg } : m));
-    } finally {
       setLoading(false);
     }
   }
@@ -91,7 +151,6 @@ export function ChatPanel({ articleId, articleTitle, articleContent, explanation
   function clearHistory() {
     setMessages([]);
     try { localStorage.removeItem(`nb_chat_${chatKey}`); } catch {}
-    // Supabaseからも削除
     import("@/lib/supabase/client").then(({ supabase }) => {
       supabase?.from("chat_messages").delete().eq("article_id", chatKey).then(() => {});
     });
@@ -143,6 +202,10 @@ export function ChatPanel({ articleId, articleTitle, articleContent, explanation
                   ))}
                 </span>
               ))}
+              {/* タイプライター中のカーソル */}
+              {loading && m.role === "assistant" && m.content && (
+                <span className="inline-block w-0.5 h-4 bg-zinc-500 dark:bg-zinc-400 ml-0.5 align-middle animate-pulse" />
+              )}
             </div>
           </div>
         ))}
