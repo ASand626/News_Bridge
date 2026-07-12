@@ -5,9 +5,9 @@ export type NewsSubcategory =
   | "finance_stock" | "finance_forex" | "finance_bonds" | "finance_macro" | "finance_commodity";
 
 export interface PickedArticle extends NewsArticle {
-  subcategory: NewsSubcategory;
-  subcategoryLabel: string;
-  subcategoryIcon: string;
+  subcategory?: NewsSubcategory;
+  subcategoryLabel?: string;
+  subcategoryIcon?: string;
 }
 export type Language = "ja" | "en";
 

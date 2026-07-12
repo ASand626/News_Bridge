@@ -1,4 +1,4 @@
-import type { NewsArticle, NewsCategory, NewsSubcategory, PickedArticle } from "@/types";
+import type { NewsArticle, NewsCategory, PickedArticle } from "@/types";
 import * as NewsApi from "./newsapi";
 import * as GNews from "./gnews";
 import { fetchCryptoNews, fetchNewsData } from "./newsdata";
@@ -112,80 +112,21 @@ export async function getArticlesByCategory(cat: NewsCategory): Promise<NewsArti
 
 // ── Today's Picks ─────────────────────────────────────────────────────────────
 
-const WEB3_SUBCATS: {
-  id: NewsSubcategory; label: string; icon: string;
-  query?: string; coins?: string;
-}[] = [
-  { id: "web3_defi",       label: "DeFi",              icon: "🔄", query: "DeFi protocol", coins: "AAVE,UNI,CRV" },
-  { id: "web3_nft",        label: "NFT・デジタルアセット", icon: "🎨", query: "NFT marketplace collection" },
-  { id: "web3_regulation", label: "規制・法律",          icon: "⚖️", query: "crypto regulation bill law SEC CFTC" },
-  { id: "web3_stablecoin", label: "ステーブルコイン",     icon: "💵", query: "stablecoin", coins: "USDT,USDC,DAI" },
-  { id: "web3_infra",      label: "L1・L2インフラ",      icon: "⛓️", query: "blockchain network upgrade", coins: "ETH,BTC,SOL" },
-];
+const TWELVE_HOURS = 12 * 60 * 60 * 1000;
 
-const FINANCE_SUBCATS: { id: NewsSubcategory; label: string; icon: string; query: string }[] = [
-  { id: "finance_stock",     label: "株式市場",     icon: "📈", query: "stock market earnings S&P Nasdaq" },
-  { id: "finance_forex",     label: "為替・FX",     icon: "💱", query: "dollar yen euro forex exchange rate" },
-  { id: "finance_bonds",     label: "債券・金利",   icon: "🏛️", query: "Federal Reserve interest rate treasury bond yield" },
-  { id: "finance_macro",     label: "マクロ経済",   icon: "🌐", query: "GDP inflation CPI economic growth" },
-  { id: "finance_commodity", label: "コモディティ", icon: "🛢️", query: "crude oil gold commodity price" },
-];
-
-function toPickedArticle(
-  a: { title: string; link: string; description: string | null; image_url: string | null; language: string; pubDate: string },
-  cat: { id: NewsSubcategory; label: string; icon: string },
-  suffix: string,
-  category: "web3" | "finance"
-): PickedArticle {
-  const id = hashId(a.link + suffix);
-  const isEn = a.language !== "ja";
-  return {
-    id, externalId: id,
-    source: "manual", category,
-    titleJa: isEn ? "" : a.title,
-    titleEn: isEn ? a.title : "",
-    contentJa: isEn ? "" : (a.description ?? ""),
-    contentEn: isEn ? (a.description ?? "") : "",
-    description: a.description ?? "",
-    url: a.link, imageUrl: a.image_url,
-    isEnglish: isEn,
-    publishedAt: a.pubDate,
-    subcategory: cat.id,
-    subcategoryLabel: cat.label,
-    subcategoryIcon: cat.icon,
-  };
+function filterRecent<T extends { pubDate: string }>(items: T[], minCount = 3, max = 20): T[] {
+  const cutoff = new Date(Date.now() - TWELVE_HOURS);
+  const recent = items.filter((a) => {
+    try { return new Date(a.pubDate) >= cutoff; } catch { return false; }
+  });
+  return (recent.length >= minCount ? recent : items).slice(0, max);
 }
 
-// キーワードで記事をWeb3サブカテゴリに分類する
-const AK_SUBCAT_KEYWORDS: Record<NewsSubcategory, string[]> = {
-  web3_defi:       ["defi", "分散型金融", "dex", "流動性", "uniswap", "aave", "compound", "yield", "レンディング", "lending", "amm", "pool"],
-  web3_nft:        ["nft", "メタバース", "デジタルアート", "コレクション", "opensea", "mint", "ミント"],
-  web3_regulation: ["規制", "法律", "金融庁", "ライセンス", "法案", "sec", "fsa", "法整備", "承認", "禁止", "違法", "制度"],
-  web3_stablecoin: ["ステーブルコイン", "stablecoin", "usdt", "usdc", "dai", "cbdc", "デジタル通貨", "ドル建て"],
-  web3_infra:      ["ビットコイン", "bitcoin", "btc", "イーサリアム", "ethereum", "eth", "solana", "sol", "レイヤー", "layer", "アップグレード", "ハードフォーク", "ノード", "チェーン"],
-  // finance subcats (not used here)
-  finance_stock:     [],
-  finance_forex:     [],
-  finance_bonds:     [],
-  finance_macro:     [],
-  finance_commodity: [],
-};
-
-function detectWeb3Subcat(article: AkArticle): NewsSubcategory {
-  const text = (article.title + " " + article.description).toLowerCase();
-  for (const cat of WEB3_SUBCATS) {
-    const kws = AK_SUBCAT_KEYWORDS[cat.id as NewsSubcategory];
-    if (kws.some((kw) => text.includes(kw))) return cat.id as NewsSubcategory;
-  }
-  return "web3_infra";
-}
-
-function akToPickedArticle(
-  article: AkArticle,
-  cat: { id: NewsSubcategory; label: string; icon: string }
-): PickedArticle {
+function akToPickedArticle(article: AkArticle): PickedArticle {
   const id = hashId(article.link + "_ak");
-  const pubDate = article.pubDate ? (() => { try { return new Date(article.pubDate).toISOString(); } catch { return new Date().toISOString(); } })() : new Date().toISOString();
+  const pubDate = article.pubDate
+    ? (() => { try { return new Date(article.pubDate).toISOString(); } catch { return new Date().toISOString(); } })()
+    : new Date().toISOString();
   return {
     id, externalId: id,
     source: "manual", category: "web3",
@@ -195,82 +136,14 @@ function akToPickedArticle(
     url: article.link, imageUrl: null,
     isEnglish: false,
     publishedAt: pubDate,
-    subcategory: cat.id,
-    subcategoryLabel: cat.label,
-    subcategoryIcon: cat.icon,
   };
 }
 
-async function getWeb3PicksFromRss(): Promise<PickedArticle[]> {
-  const articles = await fetchAtarashiiKeizai();
-  if (articles.length === 0) return [];
-
-  const picks: PickedArticle[] = [];
-  const usedUrls = new Set<string>();
-
-  for (const cat of WEB3_SUBCATS) {
-    // キーワードマッチ優先、次に未使用の先頭記事
-    const article =
-      articles.find((a) => !usedUrls.has(a.link) && detectWeb3Subcat(a) === cat.id) ??
-      articles.find((a) => !usedUrls.has(a.link));
-    if (!article) continue;
-    usedUrls.add(article.link);
-    picks.push(akToPickedArticle(article, cat));
-  }
-
-  return picks;
-}
-
-async function getWeb3PicksFromNewsData(): Promise<PickedArticle[]> {
-  const results = await Promise.allSettled(
-    WEB3_SUBCATS.map((cat) => fetchCryptoNews({ query: cat.query, coins: cat.coins }))
-  );
-  const picks: PickedArticle[] = [];
-  const usedUrls = new Set<string>();
-  for (let i = 0; i < WEB3_SUBCATS.length; i++) {
-    const cat = WEB3_SUBCATS[i];
-    const result = results[i];
-    if (result.status !== "fulfilled") continue;
-    const article = result.value.find((a) => !usedUrls.has(a.link));
-    if (!article) continue;
-    usedUrls.add(article.link);
-    picks.push(toPickedArticle(article, cat, "_ndc", "web3"));
-  }
-  return picks;
-}
-
-export async function getWeb3Picks(): Promise<PickedArticle[]> {
-  // あたらしい経済 RSSを優先、取得失敗時はNewsData.ioへフォールバック
-  const rssPicks = await getWeb3PicksFromRss();
-  if (rssPicks.length > 0) return rssPicks;
-  return getWeb3PicksFromNewsData();
-}
-
-const FINANCE_SUBCAT_KEYWORDS: Record<NewsSubcategory, string[]> = {
-  finance_stock:     ["株", "日経平均", "株式", "東証", "証券", "上場", "株価", "日経", "ダウ", "ナスダック", "s&p", "nikkei", "stock", "shares"],
-  finance_forex:     ["円", "ドル", "為替", "外国為替", "fx", "円相場", "ユーロ", "ポンド", "人民元", "yen", "dollar", "euro", "forex"],
-  finance_bonds:     ["金利", "国債", "債券", "利率", "日銀", "日本銀行", "利上げ", "利下げ", "金融政策", "fed", "フェデラル", "中央銀行", "bond", "yield", "rate"],
-  finance_macro:     ["gdp", "インフレ", "物価", "消費", "景気", "経済成長", "cpi", "失業", "雇用", "貿易", "輸出", "輸入", "inflation", "economy"],
-  finance_commodity: ["原油", "金", "銀", "資源", "石油", "商品", "コモディティ", "oil", "gold", "commodity", "wheat", "小麦"],
-  // web3 subcats (not used here)
-  web3_defi: [], web3_infra: [], web3_nft: [], web3_regulation: [], web3_stablecoin: [],
-};
-
-function detectFinanceSubcat(article: FinanceRssArticle): NewsSubcategory {
-  const text = (article.title + " " + article.description).toLowerCase();
-  for (const cat of FINANCE_SUBCATS) {
-    const kws = FINANCE_SUBCAT_KEYWORDS[cat.id as NewsSubcategory];
-    if (kws.some((kw) => text.includes(kw))) return cat.id as NewsSubcategory;
-  }
-  return "finance_macro";
-}
-
-function financeRssToPickedArticle(
-  article: FinanceRssArticle,
-  cat: { id: NewsSubcategory; label: string; icon: string }
-): PickedArticle {
+function financeRssToPickedArticle(article: FinanceRssArticle): PickedArticle {
   const id = hashId(article.link + "_fr");
-  const pubDate = article.pubDate ? (() => { try { return new Date(article.pubDate).toISOString(); } catch { return new Date().toISOString(); } })() : new Date().toISOString();
+  const pubDate = article.pubDate
+    ? (() => { try { return new Date(article.pubDate).toISOString(); } catch { return new Date().toISOString(); } })()
+    : new Date().toISOString();
   return {
     id, externalId: id,
     source: "manual", category: "finance",
@@ -280,51 +153,49 @@ function financeRssToPickedArticle(
     url: article.link, imageUrl: null,
     isEnglish: false,
     publishedAt: pubDate,
-    subcategory: cat.id,
-    subcategoryLabel: cat.label,
-    subcategoryIcon: cat.icon,
   };
 }
 
-async function getFinancePicksFromRss(): Promise<PickedArticle[]> {
-  const articles = await fetchFinanceRss();
-  if (articles.length === 0) return [];
+export async function getWeb3Picks(): Promise<PickedArticle[]> {
+  const articles = await fetchAtarashiiKeizai();
+  if (articles.length > 0) return filterRecent(articles).map(akToPickedArticle);
 
-  const picks: PickedArticle[] = [];
-  const usedUrls = new Set<string>();
-
-  for (const cat of FINANCE_SUBCATS) {
-    const article =
-      articles.find((a) => !usedUrls.has(a.link) && detectFinanceSubcat(a) === cat.id) ??
-      articles.find((a) => !usedUrls.has(a.link));
-    if (!article) continue;
-    usedUrls.add(article.link);
-    picks.push(financeRssToPickedArticle(article, cat));
-  }
-
-  return picks;
+  // フォールバック: NewsData.io crypto
+  const fallback = await fetchCryptoNews({}).catch(() => []);
+  return fallback.slice(0, 20).map((a) => {
+    const id = hashId(a.link + "_ndc");
+    const isEn = a.language !== "ja";
+    return {
+      id, externalId: id,
+      source: "manual", category: "web3",
+      titleJa: isEn ? "" : a.title, titleEn: isEn ? a.title : "",
+      contentJa: isEn ? "" : (a.description ?? ""), contentEn: isEn ? (a.description ?? "") : "",
+      description: a.description ?? "",
+      url: a.link, imageUrl: a.image_url,
+      isEnglish: isEn,
+      publishedAt: a.pubDate,
+    } as PickedArticle;
+  });
 }
 
 export async function getFinancePicks(): Promise<PickedArticle[]> {
-  // NHK経済・Reuters JPを優先、失敗時はNewsData.ioへフォールバック
-  const rssPicks = await getFinancePicksFromRss();
-  if (rssPicks.length > 0) return rssPicks;
+  const articles = await fetchFinanceRss();
+  if (articles.length > 0) return filterRecent(articles).map(financeRssToPickedArticle);
 
   // フォールバック: NewsData.io
-  const results = await Promise.allSettled(
-    FINANCE_SUBCATS.map((cat) => fetchNewsData(cat.query, "ja,en"))
-  );
-  const picks: PickedArticle[] = [];
-  const usedUrls = new Set<string>();
-  for (let i = 0; i < FINANCE_SUBCATS.length; i++) {
-    const cat = FINANCE_SUBCATS[i];
-    const result = results[i];
-    if (result.status !== "fulfilled") continue;
-    const available = result.value.filter((a) => !usedUrls.has(a.link));
-    const article = available.find((a) => a.language === "ja") ?? available[0];
-    if (!article) continue;
-    usedUrls.add(article.link);
-    picks.push(toPickedArticle(article, cat, "_nd", "finance"));
-  }
-  return picks;
+  const fallback = await fetchNewsData("finance economy stock market", "ja,en").catch(() => []);
+  return fallback.slice(0, 20).map((a) => {
+    const id = hashId(a.link + "_nd");
+    const isEn = a.language !== "ja";
+    return {
+      id, externalId: id,
+      source: "manual", category: "finance",
+      titleJa: isEn ? "" : a.title, titleEn: isEn ? a.title : "",
+      contentJa: isEn ? "" : (a.description ?? ""), contentEn: isEn ? (a.description ?? "") : "",
+      description: a.description ?? "",
+      url: a.link, imageUrl: a.image_url,
+      isEnglish: isEn,
+      publishedAt: a.pubDate,
+    } as PickedArticle;
+  });
 }
