@@ -22,9 +22,9 @@ const SUGGESTIONS = [
   "インフレとは何ですか？",
 ];
 
-// タイプライター速度: 2文字 / 30ms ≒ 67文字/秒
-const CHARS_PER_TICK = 2;
-const TICK_MS = 30;
+// タイプライター速度: 1文字 / 40ms ≒ 25文字/秒
+const CHARS_PER_TICK = 1;
+const TICK_MS = 40;
 
 export function ChatPanel({ articleId, articleTitle, articleContent, explanationContext }: Props) {
   const chatKey = articleId ?? "global";
