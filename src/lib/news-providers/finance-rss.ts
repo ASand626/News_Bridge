@@ -52,7 +52,7 @@ function parseItems(xml: string): FinanceRssArticle[] {
 async function fetchRss(url: string): Promise<FinanceRssArticle[]> {
   try {
     const res = await fetch(url, {
-      next: { revalidate: 43200 },
+      next: { revalidate: 3600 },
       headers: { "User-Agent": "Mozilla/5.0 (compatible; NewsBridge/1.0)" },
     });
     if (!res.ok) return [];
