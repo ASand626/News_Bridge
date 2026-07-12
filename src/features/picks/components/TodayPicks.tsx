@@ -12,13 +12,33 @@ const DOMAIN_TABS: { id: Domain; label: string; icon: string }[] = [
   { id: "finance", label: "金融", icon: "💰" },
 ];
 
-const SUBCAT_ORDER: Record<Domain, NewsSubcategory[]> = {
-  web3:    ["web3_defi", "web3_infra", "web3_nft", "web3_regulation", "web3_stablecoin"],
-  finance: ["finance_stock", "finance_forex", "finance_bonds", "finance_macro", "finance_commodity"],
-};
+const FINANCE_SUBCAT_ORDER: NewsSubcategory[] = [
+  "finance_stock", "finance_forex", "finance_bonds", "finance_macro", "finance_commodity",
+];
 
 function saveArticleLocal(a: PickedArticle) {
   try { localStorage.setItem(`nb_article_${a.id}`, JSON.stringify(a)); } catch {}
+}
+
+function ArticleCard({ pick }: { pick: PickedArticle }) {
+  const title = pick.titleJa || pick.titleEn;
+  return (
+    <Link href={`/news/${pick.id}`}>
+      <article className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-700 transition-all group">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 leading-snug line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+            {title}
+          </h3>
+          {pick.isEnglish && (
+            <Globe size={12} className="shrink-0 mt-0.5 text-zinc-400" />
+          )}
+        </div>
+        <p className="mt-1.5 text-xs text-zinc-400 dark:text-zinc-500">
+          {timeAgo(pick.publishedAt)}
+        </p>
+      </article>
+    </Link>
+  );
 }
 
 export function TodayPicks() {
@@ -55,7 +75,11 @@ export function TodayPicks() {
           <Flame size={18} className="text-orange-500" />
           今日のピックアップ
         </h2>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">各カテゴリの注目ニュース・12時間ごとに更新</p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          {domain === "web3"
+            ? "あたらしい経済｜前日・当日のニュース（1時間ごとに更新）"
+            : "各カテゴリの注目ニュース・1時間ごとに更新"}
+        </p>
       </div>
 
       {/* Domain tabs */}
@@ -85,38 +109,27 @@ export function TodayPicks() {
       )}
 
       {loading ? (
-        <PicksSkeleton />
+        <PicksSkeleton domain={domain} />
       ) : !error && articles.length === 0 ? (
-        <p className="text-sm text-zinc-400 dark:text-zinc-500 py-4">
-          ニュースが見つかりませんでした
-        </p>
+        <p className="text-sm text-zinc-400 dark:text-zinc-500 py-4">ニュースが見つかりませんでした</p>
+      ) : domain === "web3" ? (
+        /* Web3: フラットリスト（あたらしい経済 全件） */
+        <div className="space-y-2">
+          {articles.map((pick) => <ArticleCard key={pick.id} pick={pick} />)}
+        </div>
       ) : (
+        /* 金融: サブカテゴリー別 */
         <div className="space-y-3">
-          {SUBCAT_ORDER[domain].map((subcatId) => {
+          {FINANCE_SUBCAT_ORDER.map((subcatId) => {
             const pick = bySubcat[subcatId];
             if (!pick) return null;
-            const title = pick.titleJa || pick.titleEn;
             return (
               <div key={subcatId}>
                 <p className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 mb-1.5 flex items-center gap-1">
                   <span>{pick.subcategoryIcon}</span>
                   {pick.subcategoryLabel}
                 </p>
-                <Link href={`/news/${pick.id}`}>
-                  <article className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-700 transition-all group">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 leading-snug line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                        {title}
-                      </h3>
-                      {pick.isEnglish && (
-                        <Globe size={12} className="shrink-0 mt-0.5 text-zinc-400" />
-                      )}
-                    </div>
-                    <p className="mt-1.5 text-xs text-zinc-400 dark:text-zinc-500">
-                      {timeAgo(pick.publishedAt)}
-                    </p>
-                  </article>
-                </Link>
+                <ArticleCard pick={pick} />
               </div>
             );
           })}
@@ -126,17 +139,15 @@ export function TodayPicks() {
   );
 }
 
-function PicksSkeleton() {
+function PicksSkeleton({ domain }: { domain: Domain }) {
+  const count = domain === "web3" ? 8 : 5;
   return (
-    <div className="space-y-3">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i}>
-          <div className="h-3 w-24 bg-zinc-200 dark:bg-zinc-800 rounded mb-1.5 animate-pulse" />
-          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3">
-            <div className="h-4 w-full bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
-            <div className="h-4 w-3/4 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mt-1.5" />
-            <div className="h-3 w-16 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mt-2" />
-          </div>
+    <div className="space-y-2">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3">
+          <div className="h-4 w-full bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+          <div className="h-4 w-3/4 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mt-1.5" />
+          <div className="h-3 w-16 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mt-2" />
         </div>
       ))}
     </div>

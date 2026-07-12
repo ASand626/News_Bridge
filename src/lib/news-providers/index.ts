@@ -232,51 +232,37 @@ function toIso(pubDate: string): string {
 }
 
 export async function getWeb3Picks(): Promise<PickedArticle[]> {
+  // あたらしい経済から前日・当日の全ニュース記事を取得（特集等は除外済み）
   const rssArticles = await fetchAtarashiiKeizai();
-  const assigned = assignToSubcats(rssArticles, WEB3_SUBCATS);
-  const usedUrls = new Set<string>(rssArticles.filter((_, i) => {
-    const entry = [...assigned.values()];
-    return entry.some(e => e.link === rssArticles[i]?.link);
-  }).map(a => a.link));
-
-  const picks: PickedArticle[] = [];
-
-  for (const cat of WEB3_SUBCATS) {
-    const rss = assigned.get(cat.id);
-    if (rss) {
-      usedUrls.add(rss.link);
-      picks.push({
-        id: hashId(rss.link + "_ak"), externalId: hashId(rss.link + "_ak"),
+  if (rssArticles.length > 0) {
+    return rssArticles.map((a) => {
+      const id = hashId(a.link + "_ak");
+      return {
+        id, externalId: id,
         source: "manual", category: "web3",
-        titleJa: rss.title, titleEn: rss.title,
-        contentJa: rss.description, contentEn: rss.description,
-        description: rss.description,
-        url: rss.link, imageUrl: null, isEnglish: false,
-        publishedAt: toIso(rss.pubDate),
-        subcategory: cat.id, subcategoryLabel: cat.label, subcategoryIcon: cat.icon,
-      });
-      continue;
-    }
-
-    // RSSにマッチなし → NewsData.io でカテゴリー専用取得
-    const fallback = await fetchCryptoNews({ query: cat.fallbackQuery, coins: cat.fallbackCoins }).catch(() => []);
-    const fb = fallback.find(a => !usedUrls.has(a.link));
-    if (!fb) continue;
-    usedUrls.add(fb.link);
-    const id = hashId(fb.link + "_ndc");
-    const isEn = fb.language !== "ja";
-    picks.push({
-      id, externalId: id, source: "manual", category: "web3",
-      titleJa: isEn ? "" : fb.title, titleEn: isEn ? fb.title : "",
-      contentJa: isEn ? "" : (fb.description ?? ""), contentEn: isEn ? (fb.description ?? "") : "",
-      description: fb.description ?? "",
-      url: fb.link, imageUrl: fb.image_url, isEnglish: isEn,
-      publishedAt: fb.pubDate,
-      subcategory: cat.id, subcategoryLabel: cat.label, subcategoryIcon: cat.icon,
+        titleJa: a.title, titleEn: a.title,
+        contentJa: a.description, contentEn: a.description,
+        description: a.description,
+        url: a.link, imageUrl: null, isEnglish: false,
+        publishedAt: toIso(a.pubDate),
+      } as PickedArticle;
     });
   }
 
-  return picks;
+  // フォールバック: NewsData.io crypto
+  const fallback = await fetchCryptoNews({}).catch(() => []);
+  return fallback.slice(0, 20).map((a) => {
+    const id = hashId(a.link + "_ndc");
+    const isEn = a.language !== "ja";
+    return {
+      id, externalId: id, source: "manual", category: "web3",
+      titleJa: isEn ? "" : a.title, titleEn: isEn ? a.title : "",
+      contentJa: isEn ? "" : (a.description ?? ""), contentEn: isEn ? (a.description ?? "") : "",
+      description: a.description ?? "",
+      url: a.link, imageUrl: a.image_url, isEnglish: isEn,
+      publishedAt: a.pubDate,
+    } as PickedArticle;
+  });
 }
 
 export async function getFinancePicks(): Promise<PickedArticle[]> {
