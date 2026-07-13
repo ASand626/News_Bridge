@@ -77,7 +77,7 @@ export function TodayPicks() {
         </h2>
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
           {domain === "web3"
-            ? "あたらしい経済｜前日・当日のニュース（1時間ごとに更新）"
+            ? "あたらしい経済・CoinPost｜前日・当日のニュース（1時間ごとに更新）"
             : "各カテゴリの注目ニュース・1時間ごとに更新"}
         </p>
       </div>
@@ -111,7 +111,12 @@ export function TodayPicks() {
       {loading ? (
         <PicksSkeleton domain={domain} />
       ) : !error && articles.length === 0 ? (
-        <p className="text-sm text-zinc-400 dark:text-zinc-500 py-4">ニュースが見つかりませんでした</p>
+        <div className="py-6 text-center text-zinc-400 dark:text-zinc-500 space-y-1">
+          <p className="text-sm font-medium">現在新着記事はありません</p>
+          {domain === "web3" && (
+            <p className="text-xs">あたらしい経済は土日の更新をお休みしています</p>
+          )}
+        </div>
       ) : domain === "web3" ? (
         /* Web3: フラットリスト（あたらしい経済 全件） */
         <div className="space-y-2">

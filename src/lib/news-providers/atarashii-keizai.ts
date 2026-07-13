@@ -1,4 +1,5 @@
-const FEED_URL = "https://www.neweconomy.jp/feed/";
+const AK_FEED_URL = "https://www.neweconomy.jp/feed/";
+const COINPOST_FEED_URL = "https://coinpost.jp/?feed=rss2";
 
 export interface AkArticle {
   title: string;
@@ -59,7 +60,6 @@ function parseItems(xml: string): AkArticle[] {
   return items;
 }
 
-// 除外カテゴリー・タイトルキーワード（特集・コラム・PR等）
 const EXCLUDE_CATS = ["特集", "コラム", "連載", "pr", "プレスリリース", "広告", "sponsored", "opinion"];
 const EXCLUDE_TITLE_PREFIXES = ["【特集】", "【PR】", "【広告】", "【コラム】", "【連載】", "[PR]", "PR：", "AD："];
 
@@ -70,29 +70,51 @@ function isNewsArticle(a: AkArticle): boolean {
   return true;
 }
 
-// 前日00:00 JST（≒ UTC 48h前）以降の記事
 function isWithin48Hours(pubDate: string): boolean {
   try {
-    // JSTで前日0時 = UTC換算で now - 48h が安全なマージン
     return new Date(pubDate) >= new Date(Date.now() - 48 * 60 * 60 * 1000);
   } catch {
     return false;
   }
 }
 
-export async function fetchAtarashiiKeizai(): Promise<AkArticle[]> {
+async function fetchFeed(url: string): Promise<AkArticle[]> {
   try {
-    const res = await fetch(FEED_URL, {
+    const res = await fetch(url, {
       next: { revalidate: 3600 },
       headers: { "User-Agent": "Mozilla/5.0 (compatible; NewsBridge/1.0)" },
     });
     if (!res.ok) return [];
-    const xml = await res.text();
-    const all = parseItems(xml).filter(isNewsArticle);
-    const recent = all.filter(a => isWithin48Hours(a.pubDate));
-    // 48時間内が少なすぎる場合は最新10件にフォールバック
-    return recent.length >= 3 ? recent : all.slice(0, 10);
+    return parseItems(await res.text());
   } catch {
     return [];
   }
+}
+
+export async function fetchAtarashiiKeizai(): Promise<AkArticle[]> {
+  // あたらしい経済 + CoinPost を並列取得して合算
+  const [ak, cp] = await Promise.allSettled([
+    fetchFeed(AK_FEED_URL),
+    fetchFeed(COINPOST_FEED_URL),
+  ]);
+
+  const seen = new Set<string>();
+  const all: AkArticle[] = [];
+
+  for (const result of [ak, cp]) {
+    if (result.status !== "fulfilled") continue;
+    for (const a of result.value.filter(isNewsArticle)) {
+      if (!seen.has(a.link)) {
+        seen.add(a.link);
+        all.push(a);
+      }
+    }
+  }
+
+  // 新しい順に並べて 48h フィルター
+  all.sort((a, b) => {
+    try { return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime(); } catch { return 0; }
+  });
+
+  return all.filter(a => isWithin48Hours(a.pubDate));
 }
