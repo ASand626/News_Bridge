@@ -200,8 +200,8 @@ function scoreForSubcat(title: string, description: string, keywords: string[]):
   return score;
 }
 
-// スコアリングで最適割り当て（greedy by score）
-function assignToSubcats<T extends { title: string; description: string; link: string }>(
+// スコアリングで最適割り当て（greedy by score、同点は新しい記事優先）
+function assignToSubcats<T extends { title: string; description: string; link: string; pubDate: string }>(
   articles: T[],
   subcats: { id: string; keywords: string[] }[]
 ): Map<string, T> {
@@ -212,7 +212,13 @@ function assignToSubcats<T extends { title: string; description: string; link: s
       pairs.push({ catId: cat.id, article, score });
     }
   }
-  pairs.sort((a, b) => b.score - a.score);
+  pairs.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    // スコアが同点なら新しい記事を優先
+    try {
+      return new Date(b.article.pubDate).getTime() - new Date(a.article.pubDate).getTime();
+    } catch { return 0; }
+  });
 
   const usedCats = new Set<string>();
   const usedUrls = new Set<string>();

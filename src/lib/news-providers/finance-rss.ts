@@ -63,6 +63,14 @@ async function fetchRss(url: string): Promise<FinanceRssArticle[]> {
   }
 }
 
+function isWithin48Hours(pubDate: string): boolean {
+  try {
+    return new Date(pubDate) >= new Date(Date.now() - 48 * 60 * 60 * 1000);
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchFinanceRss(): Promise<FinanceRssArticle[]> {
   const [nhk, reuters] = await Promise.allSettled([
     fetchRss(NHK_ECONOMY_URL),
@@ -70,17 +78,24 @@ export async function fetchFinanceRss(): Promise<FinanceRssArticle[]> {
   ]);
 
   const seen = new Set<string>();
-  const articles: FinanceRssArticle[] = [];
+  const all: FinanceRssArticle[] = [];
 
   for (const result of [nhk, reuters]) {
     if (result.status !== "fulfilled") continue;
     for (const a of result.value) {
       if (!seen.has(a.link)) {
         seen.add(a.link);
-        articles.push(a);
+        all.push(a);
       }
     }
   }
 
-  return articles;
+  // 新しい順に並べる
+  all.sort((a, b) => {
+    try { return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime(); } catch { return 0; }
+  });
+
+  const recent = all.filter(a => isWithin48Hours(a.pubDate));
+  // 48時間内が少なすぎる場合は最新10件にフォールバック
+  return recent.length >= 3 ? recent : all.slice(0, 10);
 }
