@@ -1,5 +1,4 @@
 const AK_FEED_URL = "https://www.neweconomy.jp/feed/";
-const COINPOST_FEED_URL = "https://coinpost.jp/?feed=rss2";
 
 export interface AkArticle {
   title: string;
@@ -92,29 +91,29 @@ async function fetchFeed(url: string): Promise<AkArticle[]> {
 }
 
 export async function fetchAtarashiiKeizai(): Promise<AkArticle[]> {
-  // あたらしい経済 + CoinPost を並列取得して合算
-  const [ak, cp] = await Promise.allSettled([
+  // 1ページ目だけだと直近10件程度で当日分しか残らないことがあるため、
+  // 前日分を確保するために2ページ目も合わせて取得する
+  const [page1, page2] = await Promise.allSettled([
     fetchFeed(AK_FEED_URL),
-    fetchFeed(COINPOST_FEED_URL),
+    fetchFeed(`${AK_FEED_URL}?paged=2`),
   ]);
 
   const seen = new Set<string>();
-  const all: AkArticle[] = [];
-
-  for (const result of [ak, cp]) {
+  const items: AkArticle[] = [];
+  for (const result of [page1, page2]) {
     if (result.status !== "fulfilled") continue;
     for (const a of result.value.filter(isNewsArticle)) {
       if (!seen.has(a.link)) {
         seen.add(a.link);
-        all.push(a);
+        items.push(a);
       }
     }
   }
 
   // 新しい順に並べて 48h フィルター
-  all.sort((a, b) => {
+  items.sort((a, b) => {
     try { return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime(); } catch { return 0; }
   });
 
-  return all.filter(a => isWithin48Hours(a.pubDate));
+  return items.filter(a => isWithin48Hours(a.pubDate));
 }

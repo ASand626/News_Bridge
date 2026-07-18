@@ -77,7 +77,7 @@ export function TodayPicks() {
         </h2>
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
           {domain === "web3"
-            ? "あたらしい経済・CoinPost｜前日・当日のニュース（1時間ごとに更新）"
+            ? "あたらしい経済｜前日・当日のニュース（1時間ごとに更新）"
             : "各カテゴリの注目ニュース・1時間ごとに更新"}
         </p>
       </div>
