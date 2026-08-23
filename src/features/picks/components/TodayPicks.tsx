@@ -114,7 +114,7 @@ export function TodayPicks() {
         <div className="py-6 text-center text-zinc-400 dark:text-zinc-500 space-y-1">
           <p className="text-sm font-medium">現在新着記事はありません</p>
           {domain === "web3" && (
-            <p className="text-xs">あたらしい経済は土日の更新をお休みしています</p>
+            <p className="text-xs">あたらしい経済は土日祝日の更新をお休みしています</p>
           )}
         </div>
       ) : domain === "web3" ? (

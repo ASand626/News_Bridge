@@ -1,7 +1,7 @@
 import type { NewsArticle, NewsCategory, NewsSubcategory, PickedArticle } from "@/types";
 import * as NewsApi from "./newsapi";
 import * as GNews from "./gnews";
-import { fetchCryptoNews, fetchNewsData } from "./newsdata";
+import { fetchNewsData } from "./newsdata";
 import { fetchAtarashiiKeizai, type AkArticle } from "./atarashii-keizai";
 import { fetchFinanceRss, type FinanceRssArticle } from "./finance-rss";
 import { createHash } from "crypto";
@@ -239,34 +239,18 @@ function toIso(pubDate: string): string {
 
 export async function getWeb3Picks(): Promise<PickedArticle[]> {
   // あたらしい経済から前日・当日の全ニュース記事を取得（特集等は除外済み）
+  // Web3カテゴリーは あたらしい経済 のみを情報源とする（他社ソースへのフォールバックはしない）
   const rssArticles = await fetchAtarashiiKeizai();
-  if (rssArticles.length > 0) {
-    return rssArticles.map((a) => {
-      const id = hashId(a.link + "_ak");
-      return {
-        id, externalId: id,
-        source: "manual", category: "web3",
-        titleJa: a.title, titleEn: a.title,
-        contentJa: a.description, contentEn: a.description,
-        description: a.description,
-        url: a.link, imageUrl: null, isEnglish: false,
-        publishedAt: toIso(a.pubDate),
-      } as PickedArticle;
-    });
-  }
-
-  // フォールバック: NewsData.io crypto
-  const fallback = await fetchCryptoNews({}).catch(() => []);
-  return fallback.slice(0, 20).map((a) => {
-    const id = hashId(a.link + "_ndc");
-    const isEn = a.language !== "ja";
+  return rssArticles.map((a) => {
+    const id = hashId(a.link + "_ak");
     return {
-      id, externalId: id, source: "manual", category: "web3",
-      titleJa: isEn ? "" : a.title, titleEn: isEn ? a.title : "",
-      contentJa: isEn ? "" : (a.description ?? ""), contentEn: isEn ? (a.description ?? "") : "",
-      description: a.description ?? "",
-      url: a.link, imageUrl: a.image_url, isEnglish: isEn,
-      publishedAt: a.pubDate,
+      id, externalId: id,
+      source: "manual", category: "web3",
+      titleJa: a.title, titleEn: a.title,
+      contentJa: a.description, contentEn: a.description,
+      description: a.description,
+      url: a.link, imageUrl: null, isEnglish: false,
+      publishedAt: toIso(a.pubDate),
     } as PickedArticle;
   });
 }
