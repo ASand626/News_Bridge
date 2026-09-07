@@ -1,30 +1,14 @@
 "use client";
-import dynamic from "next/dynamic";
-
-const MermaidChart = dynamic(
-  () => import("./MermaidChart").then((m) => m.MermaidChart),
-  { ssr: false, loading: () => null }
-);
 
 interface Props {
-  mmdCode: string;
   textFallback: string;
-  articleId: string;
 }
 
-export function CausalChain({ mmdCode, textFallback, articleId }: Props) {
+export function CausalChain({ textFallback }: Props) {
   const arrows = textFallback.split(/→|->/).map((s) => s.trim()).filter(Boolean);
 
   return (
     <div className="space-y-4">
-      {/* Mermaid図 */}
-      {mmdCode && (
-        <div className="rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-700 p-4 overflow-hidden">
-          <MermaidChart chart={mmdCode} id={articleId} />
-        </div>
-      )}
-
-      {/* テキスト版（モバイルでも読みやすい） */}
       {arrows.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {arrows.map((step, i) => (

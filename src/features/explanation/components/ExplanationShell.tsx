@@ -79,11 +79,7 @@ export function ExplanationShell({ articleId, articleTitle, articleContent }: Pr
       {/* ③ どうつながる？ */}
       {(exp.causalChainMmd || exp.causalChainText) ? (
         <SectionWrapper title="③ どうつながる？" icon="🔗" accent="bg-indigo-50 dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900/40">
-          <CausalChain
-            mmdCode={exp.causalChainMmd ?? ""}
-            textFallback={exp.causalChainText ?? ""}
-            articleId={articleId}
-          />
+          <CausalChain textFallback={exp.causalChainText ?? ""} />
         </SectionWrapper>
       ) : exp.loading && exp.background ? (
         <SectionSkeleton label="③ どうつながる？" />
